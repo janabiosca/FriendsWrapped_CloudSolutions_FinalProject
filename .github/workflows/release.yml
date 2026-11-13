@@ -1,0 +1,65 @@
+# Continuous delivery: publishing a GitHub release (v0.2.0, v0.3.0...) applies main to AWS.
+# Give the "prod" GitHub environment required reviewers so production needs a manual approval.
+name: release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TERRAFORM_VERSION: 1.17.1
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: ${{ vars.TF_ENV || 'dev' }}
+    concurrency: terraform-${{ vars.TF_ENV || 'dev' }}
+    env:
+      TF_ENV: ${{ vars.TF_ENV || 'dev' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      TF_VAR_spotify_client_id: ${{ vars.SPOTIFY_CLIENT_ID }}
+      TF_VAR_alarm_email: ${{ vars.ALARM_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Tests must pass before deploying
+        run: |
+          pip install -r requirements-dev.txt
+          python -m pytest -q
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: AWS credentials (own account, OIDC role, no stored keys)
+        if: vars.AWS_APPLY_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: AWS credentials (AWS Academy session keys)
+        if: vars.AWS_APPLY_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Init
+        run: >-
+          terraform -chdir=infra/envs/$TF_ENV init -input=false
+          -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          -backend-config="key=$TF_ENV/terraform.tfstate"
+          -backend-config="region=$AWS_REGION"
+          -backend-config="use_lockfile=true"
+          -backend-config="encrypt=true"
+      - name: Validate
+        run: terraform -chdir=infra/envs/$TF_ENV validate
+      - name: Apply
+        run: terraform -chdir=infra/envs/$TF_ENV apply -auto-approve -input=false -lock-timeout=60s

@@ -1,13 +1,16 @@
-"""Connects one friend's Spotify account to the deployed stack.
+"""Connects one friend's Spotify account to a deployed environment.
 
 Opens the Spotify login in the browser, then stores the refresh token in Secrets Manager
 and registers the user in the group. Run it once per person (each one logs in with her
 own Spotify account; use a private window if several log in on the same laptop):
 
-    python scripts/connect_spotify.py --client-id <id> --user-id jana --name Jana --email jana@example.com
+    python scripts/connect_spotify.py --env prod --client-id <id> --user-id jana --name Jana --email jana@example.com
 
-Requires AWS credentials in the environment and http://127.0.0.1:8888/callback as a
-redirect URI of the Spotify app.
+Requires AWS credentials for the environment's account, `terraform apply` already run in
+infra/envs/<env>, and http://127.0.0.1:8888/callback as a redirect URI of the Spotify app.
+
+The token is written straight to Secrets Manager on purpose: Terraform stores everything it
+manages in plain text in its state file, so secrets must never go through Terraform.
 """
 import argparse
 import base64
@@ -16,14 +19,14 @@ import http.server
 import json
 import os
 import secrets
+import subprocess
 import sys
 import urllib.parse
 import urllib.request
 import webbrowser
 
-import boto3
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 REDIRECT = "http://127.0.0.1:8888/callback"
 SCOPES = "user-read-recently-played user-top-read"
@@ -76,25 +79,40 @@ def login(client_id):
     return json.load(urllib.request.urlopen(request))
 
 
+def terraform_outputs(env, terraform="terraform"):
+    """Reads the outputs of infra/envs/<env> (table name, secret prefix, group id)."""
+    env_dir = os.path.join(ROOT, "infra", "envs", env)
+    try:
+        raw = subprocess.run([terraform, f"-chdir={env_dir}", "output", "-json"],
+                             check=True, capture_output=True, text=True).stdout
+    except (OSError, subprocess.CalledProcessError) as e:
+        sys.exit(f"Could not read the Terraform outputs of {env_dir}: {e}")
+    outputs = {name: value["value"] for name, value in json.loads(raw or "{}").items()}
+    missing = {"table_name", "secret_prefix", "group_id"} - outputs.keys()
+    if missing:
+        sys.exit(f"Missing outputs {sorted(missing)}: run `terraform apply` in {env_dir} first.")
+    return outputs
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--env", default="dev", choices=["dev", "prod"])
     parser.add_argument("--client-id", required=True)
     parser.add_argument("--user-id", required=True, help="short id without spaces, e.g. jana")
     parser.add_argument("--name", required=True)
     parser.add_argument("--email", default="")
-    parser.add_argument("--stack", default="sfw")
+    parser.add_argument("--terraform", default="terraform", help="path to the terraform binary")
     args = parser.parse_args()
 
-    stack = boto3.client("cloudformation").describe_stacks(StackName=args.stack)["Stacks"][0]
-    outputs = {o["OutputKey"]: o["OutputValue"] for o in stack["Outputs"]}
-    os.environ["TABLE_NAME"] = outputs["TableName"]
-    os.environ["SECRET_PREFIX"] = outputs["SecretPrefix"]
+    outputs = terraform_outputs(args.env, args.terraform)
+    os.environ["TABLE_NAME"] = outputs["table_name"]
+    os.environ["SECRET_PREFIX"] = outputs["secret_prefix"]
     import store
 
     token = login(args.client_id)
     store.save_token(args.user_id, {"refresh_token": token["refresh_token"]})
-    store.add_member(outputs["GroupId"], args.user_id, args.name, args.email)
-    print(f"{args.name} connected to group '{outputs['GroupId']}'. "
+    store.add_member(outputs["group_id"], args.user_id, args.name, args.email)
+    print(f"{args.name} connected to group '{outputs['group_id']}' in {args.env}. "
           "Her plays will be collected on the next run.")
 
 

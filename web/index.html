@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Friends Wrapped · Tu música, en compañía</title>
+<style>
+:root{color-scheme:dark;--bg:#101310;--panel:#1a201a;--text:#f4f5e9;--muted:#a8b2a4;--lime:#dcfa87;--line:#333c30}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,sans-serif}button,select{font:inherit}button{cursor:pointer}header{border-bottom:1px solid var(--line);padding:22px max(6vw,24px);display:flex;justify-content:space-between;align-items:center}.brand{font-weight:800;font-size:20px;letter-spacing:-.7px}.brand b{color:var(--lime)}.pill{border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12px;color:var(--muted)}main{max-width:1190px;margin:auto;padding:50px 30px}.eyebrow{text-transform:uppercase;letter-spacing:3px;color:var(--lime);font-size:11px;font-weight:700}h1{font-size:clamp(38px,5vw,64px);letter-spacing:-3px;line-height:1.08;margin:14px 0 22px;font-weight:750}h1 em{font-style:normal;color:var(--lime)}.intro{display:flex;align-items:center;justify-content:space-between;gap:30px}.intro p{color:var(--muted);max-width:530px}.record{width:160px;height:160px;flex-shrink:0;border-radius:50%;background:repeating-radial-gradient(circle,#272e24 0px,#272e24 2px,#171c16 3px,#171c16 6px);display:grid;place-items:center;transform:rotate(-15deg);box-shadow:0 0 70px #a6d84812}.record span{background:var(--lime);color:#1b2515;border-radius:50%;width:65px;height:65px;display:grid;place-items:center;font-weight:900;font-size:28px}.tools{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:28px 0 20px;flex-wrap:wrap}.tabs{display:flex;background:#1c231a;border:1px solid var(--line);padding:4px;border-radius:12px}.tabs button{border:0;border-radius:8px;background:none;color:var(--muted);padding:8px 17px}.tabs button[aria-pressed=true]{background:var(--lime);color:#19210f;font-weight:700}.refresh{background:none;border:1px solid var(--line);border-radius:10px;color:var(--text);padding:9px 16px}.refresh:disabled{opacity:.5}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.metric{padding:23px 26px;background:var(--panel);border:1px solid var(--line);border-radius:18px}.metric span{color:var(--muted);font-size:13px}.metric strong{font-size:46px;letter-spacing:-2px;display:block;line-height:1.4}.metric small{color:var(--muted);font-size:12px}.lists{display:grid;grid-template-columns:1.15fr 1fr;gap:20px;margin-top:22px}.panel{border:1px solid var(--line);border-radius:18px;padding:25px;background:var(--panel)}.panel h2{font-size:22px;letter-spacing:-.7px;margin:0}.sub{color:var(--muted);font-size:12px;margin:3px 0 20px}.row{display:flex;align-items:center;gap:15px;padding:14px 0;border-top:1px solid var(--line)}.num{width:22px;color:var(--muted);font-size:12px}.row:first-child .num{color:var(--lime)}.name{font-weight:600;line-height:1.4;overflow-wrap:anywhere}.artist{font-size:12px;color:var(--muted)}.count{margin-left:auto;white-space:nowrap;color:var(--lime);font-weight:700}.bar{height:5px;background:#343e2d;border-radius:5px;margin-top:8px;overflow:hidden}.bar i{display:block;height:100%;background:var(--lime);border-radius:5px}.artistline{flex:1}.status{margin:24px 0 0;color:var(--muted);font-size:12px}.status b{color:var(--lime)}.notice{border-left:2px solid var(--lime);padding-left:14px;color:var(--muted);font-size:12px;max-width:850px;margin-top:24px}.error{padding:16px;border:1px solid #c58c73;border-radius:10px;color:#ffc5ad;margin-bottom:15px}footer{border-top:1px solid var(--line);padding-top:22px;margin-top:35px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:20px}button:focus-visible{outline:2px solid var(--lime);outline-offset:4px}[hidden]{display:none!important}@media(max-width:700px){main{padding:30px 20px}header{padding:18px 20px}.record{display:none}.cards{gap:10px}.metric{padding:16px 12px}.metric strong{font-size:32px}.lists{grid-template-columns:1fr}.pill{font-size:10px}h1{letter-spacing:-2px}.tabs button{padding:8px 12px}footer{display:block}}
+
+.weekly{margin-top:28px}.weekly table{width:100%;border-collapse:collapse;text-align:left}.weekly th,.weekly td{padding:10px 12px;border-bottom:1px solid var(--line)}.weekly th{font-size:13px;color:var(--muted)}.weekly th:first-child,.weekly td:first-child{padding-left:0}.weekly .table-scroll{overflow:auto}.weekly h3{margin:0;font-size:16px}.weekly ul{padding-left:20px}.weekly progress{width:64px;vertical-align:middle;accent-color:var(--lime)}
+</style>
+<header><div class="brand">friends<span> wrapped</span><b> ✳</b></div><span class="pill">Vista privada · Jana</span></header>
+<main><section class="intro"><div><div class="eyebrow">Tu música, en compañía</div><h1>Tu historia suena<br><em>así, Jana.</em></h1><p>Las canciones que vuelven. Los artistas que se quedan.<br>Un pequeño retrato de lo que estás escuchando.</p></div><div class="record" aria-hidden="true"><span>fw</span></div></section>
+<div class="tools"><div class="tabs" aria-label="Periodo"><button data-period="all" aria-pressed="true">Todo lo guardado</button><button data-period="7d" aria-pressed="false">7 días</button><button data-period="today" aria-pressed="false">Hoy</button></div><button class="refresh" id="refresh">↻ Actualizar datos</button></div>
+<div class="error" id="error" role="alert" hidden></div>
+<div aria-live="polite" aria-busy="true" id="content"><section class="cards"><article class="metric"><span>Reproducciones</span><strong id="plays">—</strong><small>Veces que sonó una canción</small></article><article class="metric"><span>Canciones distintas</span><strong id="unique">—</strong><small>Tu variedad musical</small></article><article class="metric"><span>Minutos estimados</span><strong id="minutes">—</strong><small>Según la duración de las canciones</small></article></section>
+<section class="lists"><article class="panel"><h2>En bucle</h2><p class="sub">Tus canciones más reproducidas en el periodo</p><div id="tracks">Cargando tus canciones…</div></article><article class="panel"><h2>Tu compañía musical</h2><p class="sub">Artistas más escuchados · incluye colaboraciones</p><div id="artists">Cargando tus artistas…</div></article></section></div>
+<p class="status" id="status">Consultando la última sincronización…</p><p class="notice" id="coverage">Este resumen utiliza únicamente las reproducciones guardadas por el proyecto. No representa todo tu historial de Spotify. Los saltos de canción pueden hacer que los minutos estimados sean superiores a los escuchados.</p>
+
+<section class="panel weekly" aria-labelledby="weekly-heading">
+  <h2 id="weekly-heading">Ranking semanal del grupo</h2>
+  <p class="sub" id="weekly-period">Datos ficticios</p>
+  <p id="weekly-status" role="status">Cargando el ranking…</p>
+  <div id="weekly-results" hidden>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th scope="col">Puesto</th><th scope="col">Perfil</th><th scope="col">Reproducciones</th><th scope="col">Minutos registrados</th><th scope="col">Cobertura</th></tr></thead>
+        <tbody id="weekly-ranking"></tbody>
+      </table>
+    </div>
+    <p class="notice">Un día con cobertura puede tener cero escuchas. Si faltan días, la posición se basa en las escuchas registradas.</p>
+    <div class="lists">
+      <div><h3>Canciones del grupo</h3><ul id="weekly-tracks"></ul></div>
+      <div><h3>Artistas del grupo</h3><ul id="weekly-artists"></ul></div>
+    </div>
+  </div>
+</section>
+<footer><span>Friends Wrapped · Proyecto Cloud Solutions</span><span>Solo música. Sin podcasts.</span></footer></main>
+<script>
+const $=id=>document.getElementById(id);let period='all';let busy=false;
+const fmt=n=>new Intl.NumberFormat('es-ES',{maximumFractionDigits:1}).format(n);
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+function render(d){$('plays').textContent=fmt(d.total_plays);$('unique').textContent=fmt(d.unique_tracks);$('minutes').textContent=fmt(d.estimated_minutes);$('tracks').replaceChildren();$('artists').replaceChildren();
+d.top_tracks.forEach((t,i)=>{const r=el('div','row');r.append(el('span','num',String(i+1).padStart(2,'0')));const names=el('div');names.append(el('div','name',t.name),el('div','artist',t.artists.join(', ')));r.append(names,el('span','count',t.plays+' ×'));$('tracks').append(r)});
+d.top_artists.forEach((a,i)=>{const r=el('div','row');r.append(el('span','num',String(i+1).padStart(2,'0')));const n=el('div','artistline');n.append(el('div','name',a.name));const b=el('div','bar'),v=el('i');v.style.width=(a.plays/d.top_artists[0].plays*100)+'%';b.append(v);n.append(b);r.append(n,el('span','count',a.plays+' ×'));$('artists').append(r)});
+if(!d.total_plays){$('tracks').textContent='Aún no hay reproducciones guardadas en este periodo.';$('artists').textContent='Los artistas aparecerán cuando tengamos canciones.'}
+const date=x=>new Date(x).toLocaleString('es-ES',{timeZone:'Europe/Madrid',dateStyle:'short',timeStyle:'short'});
+$('status').textContent=(d.last_sync_status==='ok'?'● Sincronización correcta':'● Revisa la sincronización')+(d.last_sync_at?' · Última recogida: '+date(d.last_sync_at):'')+' · Horario de Madrid';
+if(d.first_play_at)$('status').textContent+=' · Reproducciones: '+date(d.first_play_at)+' — '+date(d.last_play_at);
+if(d.possible_gaps)$('status').textContent+=' · Hay posibles huecos en el historial.';
+}
+async function load(){if(busy)return;busy=true;$('refresh').disabled=true;document.querySelectorAll('[data-period]').forEach(b=>b.disabled=true);$('content').setAttribute('aria-busy','true');$('error').hidden=true;try{const r=await fetch('/api/stats?period='+period);const d=await r.json();if(!r.ok)throw Error(d.error||'No se han podido cargar los datos.');render(d)}catch(e){$('error').textContent=e.message+' Puedes volver a intentarlo con Actualizar datos. Si ya había datos visibles, pertenecen a la última consulta correcta.';$('error').hidden=false}finally{busy=false;$('refresh').disabled=false;document.querySelectorAll('[data-period]').forEach(b=>b.disabled=false);$('content').setAttribute('aria-busy','false')}}
+document.querySelectorAll('[data-period]').forEach(b=>b.onclick=()=>{period=b.dataset.period;document.querySelectorAll('[data-period]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));load()});$('refresh').onclick=load;load();
+
+async function loadWeeklyRanking() {
+  try {
+    const response = await fetch('/api/demo-weekly-ranking');
+    if (!response.ok) throw new Error('No se ha podido cargar el ranking de demostración.');
+    const data = await response.json();
+    const start = new Date(data.week_start + 'T00:00:00Z');
+    const end = new Date(start);
+    end.setUTCDate(start.getUTCDate() + 6);
+    const formatDate = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeZone: 'UTC' });
+    $('weekly-period').textContent = 'Datos ficticios · ' + formatDate.formatRange(start, end);
+    for (const member of data.ranking) {
+      const row = el('tr');
+      for (const value of [member.rank, member.name, member.total_plays, fmt(member.estimated_minutes)]) {
+        row.append(el('td', '', value));
+      }
+      const coverage = el('td');
+      const progress = el('progress');
+      progress.max = 7;
+      progress.value = member.covered_days;
+      progress.setAttribute('aria-label', 'Días con cobertura de ' + member.name);
+      coverage.append(progress, document.createTextNode(' ' + member.covered_days + ' de 7 días'));
+      if (member.unverified_days.length) {
+        const missing = member.unverified_days.map(day => formatDate.format(new Date(day + 'T00:00:00Z')));
+        coverage.append(el('div', 'artist', 'Sin verificar: ' + missing.join(', ')));
+      }
+      row.append(coverage);
+      $('weekly-ranking').append(row);
+    }
+    for (const [listId, entries] of [['weekly-tracks', data.group.top_tracks], ['weekly-artists', data.group.top_artists]]) {
+      for (const item of entries) {
+        $(listId).append(el('li', '', item.name + ' · ' + item.plays + ' reproducciones'));
+      }
+    }
+    $('weekly-results').hidden = false;
+    $('weekly-status').hidden = true;
+  } catch (error) {
+    $('weekly-status').textContent = 'No se ha podido cargar el ranking de demostración.';
+  }
+}
+loadWeeklyRanking();
+</script></html>

@@ -1,0 +1,136 @@
+# Continuous integration: every push and pull request is checked before anything is deployed.
+# Python tests -> Terraform fmt/validate/test -> Trivy security scan -> plan commented on the PR.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  TERRAFORM_VERSION: 1.17.1
+  TRIVY_VERSION: 0.76.1
+  TRIVY_SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13" # same runtime as the Lambdas
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  terraform-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Format
+        run: terraform -chdir=infra fmt -check -recursive -diff
+      - name: Module tests (mocked AWS, no credentials)
+        working-directory: infra/modules/ingestion
+        run: |
+          terraform init -input=false
+          terraform test
+      - name: Validate environments
+        run: |
+          for env in dev prod; do
+            terraform -chdir=infra/envs/$env init -backend=false -input=false
+            terraform -chdir=infra/envs/$env validate
+          done
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Trivy (pinned release, checksum verified)
+        run: |
+          curl -sSfLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" | sha256sum -c -
+          tar -xzf "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy
+      - name: Infrastructure misconfigurations (blocks on HIGH/CRITICAL)
+        run: ./trivy config --exit-code 1 --severity HIGH,CRITICAL --skip-dirs "**/.terraform" infra
+      - name: Secrets committed by mistake
+        run: ./trivy fs --exit-code 1 --scanners secret --skip-dirs .venv .
+
+  plan:
+    # Needs AWS access: runs once the repository variables in the README are configured.
+    if: github.event_name == 'pull_request' && vars.TF_STATE_BUCKET != ''
+    needs: [python-tests, terraform-checks, security-scan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC login to our own AWS account
+      pull-requests: write # comment the plan on the PR
+    env:
+      TF_ENV: ${{ vars.TF_ENV || 'dev' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      TF_VAR_spotify_client_id: ${{ vars.SPOTIFY_CLIENT_ID }}
+      TF_VAR_alarm_email: ${{ vars.ALARM_EMAIL }}
+    concurrency: terraform-${{ vars.TF_ENV || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: AWS credentials (own account, OIDC role, no stored keys)
+        if: vars.AWS_PLAN_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: AWS credentials (AWS Academy session keys)
+        if: vars.AWS_PLAN_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Init
+        run: >-
+          terraform -chdir=infra/envs/$TF_ENV init -input=false
+          -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          -backend-config="key=$TF_ENV/terraform.tfstate"
+          -backend-config="region=$AWS_REGION"
+          -backend-config="use_lockfile=true"
+          -backend-config="encrypt=true"
+      - name: Plan
+        run: |
+          set -o pipefail
+          terraform -chdir=infra/envs/$TF_ENV plan -no-color -input=false -lock-timeout=60s | tee plan.txt
+      - name: Comment the plan on the pull request
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.existsSync('plan.txt') ? fs.readFileSync('plan.txt', 'utf8') : 'The plan did not run, check the logs.';
+            if (plan.length > 60000) plan = '...(truncated)\n' + plan.slice(-60000);
+            const body = [
+              `#### Terraform plan for \`${process.env.TF_ENV}\``,
+              '',
+              '<details><summary>Show plan</summary>',
+              '',
+              '```',
+              plan,
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

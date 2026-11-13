@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (git-ignored)
+spotify_client_id = "<client id from developer.spotify.com/dashboard>"
+alarm_email       = "<team email>"
+# collect_schedule = "rate(5 minutes)"  # demo day

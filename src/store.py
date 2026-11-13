@@ -63,6 +63,7 @@ def put_play(user_id, play):
                 "artist_ids": [a["id"] for a in track.get("artists", []) if a.get("id")],
                 "album": (track.get("album") or {}).get("name", ""),
                 "duration_ms": track.get("duration_ms", 0),
+                **({"ms_played": play["ms_played"]} if "ms_played" in play else {}),
                 "context_type": (play.get("context") or {}).get("type", ""),
             },
             ConditionExpression="attribute_not_exists(PK)",
@@ -101,11 +102,19 @@ def record_sync(user_id, cursor_ms, new_plays, possible_gap):
 
 
 def record_failure(user_id, status, error):
-    _table().update_item(
-        Key={"PK": f"USER#{user_id}", "SK": "PROFILE"},
-        UpdateExpression="SET last_failure_at = :t, last_sync_status = :s, last_error = :e",
-        ExpressionAttributeValues={":t": _now(), ":s": status, ":e": error[:500]},
-    )
+    """Flags the failure on the profile. Returns False for unknown users instead of creating a ghost profile."""
+    try:
+        _table().update_item(
+            Key={"PK": f"USER#{user_id}", "SK": "PROFILE"},
+            UpdateExpression="SET last_failure_at = :t, last_sync_status = :s, last_error = :e",
+            ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues={":t": _now(), ":s": status, ":e": error[:500]},
+        )
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise
 
 
 # --- Spotify tokens ----------------------------------------------------------
@@ -127,8 +136,13 @@ def save_token(user_id, token):
 
 # --- raw archive -------------------------------------------------------------
 
-def archive_raw(user_id, page):
+def raw_key(provider, user_id, moment):
+    """Hive-style partitions, so Glue and Athena can prune by provider, user and day."""
+    return f"raw/provider={provider}/user={user_id}/dt={moment:%Y-%m-%d}/{moment:%H%M%S%f}.json"
+
+
+def archive_raw(user_id, page, provider="spotify"):
     now = datetime.datetime.now(datetime.timezone.utc)
-    key = f"raw/user={user_id}/dt={now:%Y-%m-%d}/{now:%H%M%S}.json"
+    key = raw_key(provider, user_id, now)
     boto3.client("s3").put_object(Bucket=os.environ["RAW_BUCKET"], Key=key,
                                   Body=json.dumps(page).encode(), ContentType="application/json")

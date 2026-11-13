@@ -42,10 +42,12 @@ class FakeSpotify:
             token["refresh_token"] = self.rotate_to
         return token
 
-    def recently_played(self, access_token, after_ms=None):
+    def recently_played(self, access_token, after_ms=None, before_ms=None):
         if self.fail:
             raise self.fail
         newer = [p for p in self.plays if collector.played_at_ms(p["played_at"]) > (after_ms or 0)]
+        if before_ms is not None:
+            newer = [p for p in newer if collector.played_at_ms(p["played_at"]) < before_ms]
         newer.sort(key=lambda p: p["played_at"], reverse=True)
         return {"items": newer[:spotify.PAGE_SIZE]}
 
@@ -151,7 +153,7 @@ def test_full_page_after_cursor_is_reported_as_possible_gap(aws, fake):
     assert collector.collect("jana")["possible_gap"] is False
     fake.plays += [play(m, f"t{m}{s}", s) for m in range(1, 7) for s in range(10)]  # 60 more plays
     result = collector.collect("jana")
-    assert result["possible_gap"] is True and result["new_plays"] == 50
+    assert result["possible_gap"] is True and result["new_plays"] == 60
     assert store.get_profile("jana")["possible_gaps"] == 1
 
 
@@ -162,3 +164,74 @@ def test_dispatcher_queues_one_task_per_member_and_dedupes_repeated_ticks(aws, f
     sqs = boto3.client("sqs")
     messages = sqs.receive_message(QueueUrl=os.environ["QUEUE_URL"], MaxNumberOfMessages=10).get("Messages", [])
     assert sorted(json.loads(m["Body"])["user_id"] for m in messages) == ["helena", "jana"]
+
+
+def test_raw_responses_are_partitioned_by_provider_user_and_day(aws, fake):
+    fake.plays = [play(1)]
+    collector.collect("jana")
+    keys = [o["Key"] for o in boto3.client("s3").list_objects_v2(Bucket="sfw-raw-test")["Contents"]]
+    assert len(keys) == 1
+    assert keys[0].startswith("raw/provider=spotify/user=jana/dt=") and keys[0].endswith(".json")
+
+
+def test_failure_of_unknown_user_does_not_create_a_ghost_profile(aws, fake):
+    with pytest.raises(LookupError):
+        collector.handler(sqs_event("nobody"), None)
+    assert store.get_profile("nobody") is None
+
+
+def test_rate_limit_delays_the_retry_as_long_as_spotify_asks(aws, fake):
+    sqs, queue = boto3.client("sqs"), os.environ["QUEUE_URL"]
+    sqs.send_message(QueueUrl=queue, MessageBody=json.dumps({"user_id": "jana"}),
+                     MessageGroupId="jana", MessageDeduplicationId="tick-1")
+    # Received with visibility 0: without the fix, the message would be visible again at once
+    message = sqs.receive_message(QueueUrl=queue, VisibilityTimeout=0)["Messages"][0]
+    fake.fail = spotify.RateLimited(120)
+    with pytest.raises(spotify.RateLimited):
+        collector.handler({"Records": [{"body": message["Body"],
+                                        "receiptHandle": message["ReceiptHandle"]}]}, None)
+    assert sqs.receive_message(QueueUrl=queue).get("Messages", []) == []  # hidden for 120 s
+    assert store.get_profile("jana")["last_sync_status"] == "rate_limited"
+
+
+def test_second_page_failure_preserves_checkpoint(aws, fake, monkeypatch):
+    fake.plays = [play(0)]
+    collector.collect("jana")
+    old = store.get_profile("jana")["cursor_ms"]
+    fake.plays += [play(m, f"t{m}{s}", s) for m in range(1, 7) for s in range(10)]
+    original = fake.recently_played
+    def failing(access_token, after_ms=None, before_ms=None):
+        if before_ms is not None:
+            raise spotify.SpotifyError("second page failed")
+        return original(access_token, after_ms, before_ms)
+    monkeypatch.setattr(spotify, "recently_played", failing)
+    with pytest.raises(spotify.SpotifyError):
+        collector.collect("jana")
+    assert store.get_profile("jana")["cursor_ms"] == old
+    assert len(stored("jana")) == 1
+    monkeypatch.setattr(spotify, "recently_played", original)
+    assert collector.collect("jana")["new_plays"] == 60
+    assert collector.collect("jana")["new_plays"] == 0
+    assert len(stored("jana")) == 61
+
+
+def test_documented_next_page_overlap_is_deduplicated(aws, fake, monkeypatch):
+    fake.plays = [play(0)]
+    collector.collect("jana")
+    url = "https://api.spotify.com/v1/me/player/recently-played?before=123"
+    monkeypatch.setattr(spotify, "recently_played", lambda *a, **kw: {"items": [play(3), play(2)], "next": url})
+    monkeypatch.setattr(spotify, "next_recent_page", lambda *a: {"items": [play(2), play(1)]})
+    assert collector.collect("jana")["new_plays"] == 3
+    assert len(stored("jana")) == 4
+
+
+def test_repeated_page_fails_without_advancing(aws, fake, monkeypatch):
+    fake.plays = [play(0)]
+    collector.collect("jana")
+    old = store.get_profile("jana")["cursor_ms"]
+    page = {"items": [play(2)], "next": "https://api.spotify.com/v1/me/player/recently-played?before=123"}
+    monkeypatch.setattr(spotify, "recently_played", lambda *a, **kw: page)
+    monkeypatch.setattr(spotify, "next_recent_page", lambda *a: page)
+    with pytest.raises(spotify.SpotifyError):
+        collector.collect("jana")
+    assert store.get_profile("jana")["cursor_ms"] == old

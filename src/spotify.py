@@ -7,7 +7,7 @@ import urllib.request
 
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 API_URL = "https://api.spotify.com/v1"
-PAGE_SIZE = 50  # Spotify keeps only the last 50 plays of a user; older ones cannot be fetched
+PAGE_SIZE = 50  # Maximum per request; availability of older history is not guaranteed.
 
 
 class SpotifyError(Exception):
@@ -53,10 +53,23 @@ def refresh(client_id, refresh_token, client_secret=None):
     return _call(urllib.request.Request(TOKEN_URL, data=data, headers=headers))
 
 
-def recently_played(access_token, after_ms=None):
+def recently_played(access_token, after_ms=None, before_ms=None):
     """Plays after the given cursor (unix ms, exclusive), newest first, at most PAGE_SIZE."""
+    if after_ms is not None and before_ms is not None:
+        raise ValueError("after and before cannot be combined")
     params = {"limit": PAGE_SIZE}
     if after_ms:
         params["after"] = after_ms
+    if before_ms is not None:
+        params["before"] = before_ms
     url = f"{API_URL}/me/player/recently-played?{urllib.parse.urlencode(params)}"
+    return _call(urllib.request.Request(url, headers={"Authorization": f"Bearer {access_token}"}))
+
+
+def next_recent_page(access_token, url):
+    """Follow only Spotify's documented history endpoint; never forward tokens elsewhere."""
+    parsed = urllib.parse.urlsplit(url)
+    if (parsed.scheme != "https" or parsed.netloc != "api.spotify.com"
+            or parsed.path != "/v1/me/player/recently-played" or parsed.fragment):
+        raise SpotifyError("Unexpected pagination URL")
     return _call(urllib.request.Request(url, headers={"Authorization": f"Bearer {access_token}"}))

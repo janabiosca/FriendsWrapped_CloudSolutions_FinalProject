@@ -1,6 +1,25 @@
+# Python
 .venv/
 __pycache__/
 .pytest_cache/
-packaged.yaml
+
+# Terraform: providers, local state and per-person settings stay out of git.
+# .terraform.lock.hcl IS committed so everyone (and CI) uses the same provider versions.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+terraform.tfvars
+backend.conf
+.build/
+.build-test/
+
+# Credentials and tokens
+credentials
 tokens.json
+.env
+
 .DS_Store
+
+# Lock files are only committed for the root environments, not for module tests
+infra/modules/**/.terraform.lock.hcl
