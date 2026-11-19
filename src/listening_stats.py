@@ -53,6 +53,7 @@ def weekly_group(members, monday, timezone="Europe/Madrid"):
         missing = sorted(days - set(member["covered_days"]))
         ranking.append({
             "name": member["name"],
+            "user_id": member.get("user_id", member["name"]),
             **summarize(plays),
             "covered_days": 7 - len(missing),
             "unverified_days": [day.isoformat() for day in missing],

@@ -108,7 +108,10 @@ run "own_account_gets_one_least_privilege_role_per_function" {
   }
 
   assert {
-    condition     = aws_sqs_queue.collect.fifo_queue && aws_sqs_queue.collect.visibility_timeout_seconds == 90
+    condition = (
+      aws_sqs_queue.collect.fifo_queue
+      && aws_sqs_queue.collect.visibility_timeout_seconds == 6 * aws_lambda_function.fn["collector"].timeout
+    )
     error_message = "Collect queue must be FIFO with 6x the function timeout as visibility"
   }
 

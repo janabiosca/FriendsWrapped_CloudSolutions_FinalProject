@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "src"))
 os.environ.setdefault("TABLE_NAME", "sfw-dev")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 from demo_weekly_ranking import demo_weekly_ranking
+from show_group_stats import weekly_from_store
 import listening_stats
 import store
 
@@ -31,6 +32,16 @@ class Handler(BaseHTTPRequestHandler):
         elif route.path == "/api/demo-weekly-ranking":
             body = json.dumps(demo_weekly_ranking(), ensure_ascii=False).encode()
             content_type = "application/json; charset=utf-8"
+        elif route.path == "/api/group-weekly":
+            try:
+                today = dt.datetime.now(ZoneInfo("Europe/Madrid")).date()
+                monday = today - dt.timedelta(days=today.weekday())
+                result = weekly_from_store(os.environ.get("GROUP_ID", "friends"), monday)
+                body = json.dumps(result, ensure_ascii=False).encode()
+                content_type = "application/json; charset=utf-8"
+            except Exception:
+                self.send_error(503, "Group statistics unavailable")
+                return
         elif route.path == "/api/stats":
             period = parse_qs(route.query).get("period", ["all"])[0]
             if period not in ("all", "today", "7d"):

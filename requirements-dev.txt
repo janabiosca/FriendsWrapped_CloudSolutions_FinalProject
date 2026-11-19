@@ -1,4 +1,6 @@
-# Only for tests and CI: the Lambdas themselves use the standard library + boto3 from the runtime.
+-r requirements-wrapped.txt
+pypdf==7.1.1
+# Tests and development; the PDF renderer shares the Wrapped runtime requirements.
 pytest==9.2.0
 moto[dynamodb,s3,sqs,secretsmanager]==5.2.5
 boto3==1.43.125
