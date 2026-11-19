@@ -1,11 +1,16 @@
 # Spotify Friends Wrapped
 
-Listening statistics and a weekly Wrapped for a group of 4 friends, built serverless on AWS.
+Listening statistics and a weekly Wrapped for a group of friends, built serverless on AWS.
 
 Spotify returns at most **50 plays per request** and does not guarantee unlimited historical access. The first
 version (v0.2, *ingestion*) collects every friend's plays every hour, even when nobody has the
 app open, with conditional writes to avoid duplicates and warnings about possible gaps. Everything else (stats, web app, Wrapped, concerts)
 is built on top of this history.
+
+The current AWS Academy deployment collects three Spotify accounts every five minutes.
+The hosted dashboard supports separate user accounts, shared group profiles, observer
+access and weekly PDF downloads. Concert discovery and Wrapped email delivery remain
+pending. The `prod` environment is prepared configuration for an optional own account.
 
 ## Architecture (v0.2)
 
@@ -38,9 +43,12 @@ Design decisions with their alternatives are in [docs/decisions](docs/decisions)
 infra/
   modules/ingestion/      reusable module (+ tests/ with a mocked AWS provider)
   envs/dev/               AWS Academy sandbox (LabRole, destroyable)
-  envs/prod/              our own account (least-privilege roles, protected data, KMS)
+  envs/prod/              optional own-account configuration (least-privilege roles, KMS)
+  connect/                remote Spotify authorization by invitation
+  dashboard/              Cognito sign-in and private group statistics
+  wrapped/                weekly Step Functions workflow and PDF generation
   bootstrap/github-oidc/  one-off: lets GitHub Actions log in to AWS without stored keys
-src/                      Lambda code (standard library + boto3 only)
+src/                      Lambda code; the PDF renderer also uses ReportLab
 tests/                    pytest + moto (in-memory AWS), Spotify faked
 scripts/                  bootstrap_state.sh, connect_spotify.py
 .github/workflows/        ci.yml (every push/PR), release.yml (deploy on release)
@@ -48,13 +56,13 @@ scripts/                  bootstrap_state.sh, connect_spotify.py
 
 ## Environments
 
-| | `dev` | `prod` |
+| | `dev` | `prod` (optional configuration) |
 |---|---|---|
-| Account | AWS Academy sandbox | our own AWS account |
+| Account | AWS Academy sandbox | an independently provisioned AWS account |
 | IAM | every function runs as `LabRole` (roles cannot be created) | one least-privilege role per function |
 | Data | destroyable (`protect_data = false`) | DynamoDB deletion protection, S3 kept |
 | Encryption | AWS managed keys | customer managed KMS key |
-| Always on | not guaranteed: lab sessions expire and the sandbox can be reset | yes: the real listening history lives here |
+| Always on | not guaranteed: lab sessions expire and the sandbox can be reset | intended when deployed in an own account |
 
 ## Deploy
 
@@ -159,7 +167,7 @@ Lambda, DynamoDB on-demand, SQS, S3 and X-Ray stay within the free tier at this 
 - A pagination loop, failed request or the 20-page safety limit fails the collection
   without advancing its checkpoint. It is not silently marked complete.
 - `dev` is a sandbox: check whether scheduled collections keep running after the AWS Academy
-  session ends before relying on it; the real history is collected in `prod`.
+  session ends before relying on it. The current recorded history is stored in `dev`.
 
 ## Local dashboard preview
 
@@ -168,8 +176,8 @@ The preview is read-only, bound to loopback on this Mac, and uses the current lo
 AWS credentials to query Jana's recorded plays. It never reads Spotify tokens.
 Filters: all recorded history, the last seven calendar days, or today (Europe/Madrid).
 Refresh reloads stored statistics; collection is independently scheduled in AWS.
-This is not yet the hosted group application: authentication, group authorization,
-and an AWS-hosted API/frontend remain to be implemented.
+The hosted group application is deployed separately through `infra/dashboard`, with
+Cognito authentication and group authorization.
 
 
 ## Remote Spotify connection (AWS Academy)
